@@ -11,6 +11,7 @@ import time
 from typing import Optional
 
 import ydb_dbapi
+import ydb
 from flask import Flask, request, jsonify, render_template
 from dotenv import load_dotenv
 
@@ -64,11 +65,20 @@ VECTOR_PASS_AS_BYTES = os.getenv("VECTOR_PASS_AS_BYTES", "true").lower() == "tru
 def get_connection():
     """Create YDB connection"""
     logger.debug(f"Creating connection to {YDB_HOST}:{YDB_PORT}/{YDB_DATABASE}")
-    return ydb_dbapi.connect(
-        host=YDB_HOST,
-        port=YDB_PORT,
+    protocol = "grpcs" if YDB_SECURE else "grpc"
+    endpoint = f"{protocol}://{YDB_HOST}:{YDB_PORT}/"
+    logger.debug(f"Using endpoint: {endpoint}")
+    driver_config = ydb.DriverConfig(
+        endpoint=endpoint,
         database=YDB_DATABASE,
-        protocol="grpcs" if YDB_SECURE else "grpc",
+        credentials=ydb.AnonymousCredentials(),
+        use_all_nodes=False,
+    )
+    driver = ydb.Driver(driver_config)
+    driver.wait(5, fail_fast=True)
+    pool = ydb.QuerySessionPool(driver)
+    return ydb_dbapi.connect(
+        ydb_session_pool=pool,
     )
 
 
