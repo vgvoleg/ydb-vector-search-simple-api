@@ -371,8 +371,8 @@ if __name__ == '__main__':
         logger.error("Database connection failed - exiting")
         exit(1)
 
-    flask_host = os.getenv("FLASK_HOST", "0.0.0.0")
-    flask_port = int(os.getenv("FLASK_PORT", "5001"))
+    flask_host = os.getenv("FLASK_HOST", "::")
+    flask_port = int(os.getenv("FLASK_PORT", "5000"))
     flask_debug = os.getenv("FLASK_DEBUG", "true").lower() == "true"
 
     print(f"\nStarting server on {flask_host}:{flask_port}")
