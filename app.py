@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import struct
+import time
 from typing import Optional
 
 import ydb_dbapi
@@ -198,17 +199,19 @@ def execute_search(embedding: list[float], k: int, filter_params: Optional[dict]
 
         with connection.cursor() as cursor:
             logger.info("Executing YDB query...")
+            start_time = time.perf_counter()
             cursor.execute(query, {"$embedding": embedding_value})
+            search_time = time.perf_counter() - start_time
 
             if cursor.description is None:
                 logger.warning("Query returned no description")
-                return []
+                return [], search_time
 
             columns = [col[0] for col in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-            logger.info(f"Query returned {len(results)} results")
-            return results
+            logger.info(f"Query returned {len(results)} results in {search_time*1000:.2f}ms")
+            return results, search_time
 
     except Exception as e:
         logger.error(f"Search execution failed: {str(e)}")
@@ -319,12 +322,14 @@ def search():
             return jsonify({"error": "k must be a positive integer"}), 400
 
         # Execute search
-        results = execute_search(embedding, k, filter_params)
+        results, search_time = execute_search(embedding, k, filter_params)
 
-        logger.info(f"Search completed successfully, returning {len(results)} results")
+        search_time_ms = search_time * 1000
+        logger.info(f"Search completed successfully, returning {len(results)} results in {search_time_ms:.2f}ms")
         return jsonify({
             "results": results,
-            "count": len(results)
+            "count": len(results),
+            "search_time_ms": search_time_ms
         })
 
     except Exception as e:

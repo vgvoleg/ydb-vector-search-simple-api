@@ -164,6 +164,15 @@
             color: #666;
         }
 
+        .search-time {
+            font-size: 13px;
+            color: #888;
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 4px;
+        }
+
         .error-message {
             background: #fee;
             border: 1px solid #fcc;
@@ -293,7 +302,10 @@
         <div class="results-section" id="resultsSection">
             <div class="results-header">
                 <h2>Results</h2>
-                <span class="results-count" id="resultsCount"></span>
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <span class="search-time hidden" id="searchTime"></span>
+                    <span class="results-count" id="resultsCount"></span>
+                </div>
             </div>
 
             <div id="errorMessage" class="error-message hidden"></div>
@@ -325,6 +337,7 @@
         const resultsTable = document.getElementById('resultsTable');
         const resultsBody = document.getElementById('resultsBody');
         const resultsCount = document.getElementById('resultsCount');
+        const searchTime = document.getElementById('searchTime');
         const errorMessage = document.getElementById('errorMessage');
         const loading = document.getElementById('loading');
         const noResults = document.getElementById('noResults');
@@ -350,6 +363,7 @@
             errorMessage.classList.add('hidden');
             resultsTable.classList.add('hidden');
             noResults.classList.add('hidden');
+            searchTime.classList.add('hidden');
             loading.classList.remove('hidden');
             resultsSection.classList.add('visible');
 
@@ -389,7 +403,7 @@
                     throw new Error(data.error || 'Search failed');
                 }
 
-                displayResults(data.results);
+                displayResults(data.results, data.search_time_ms);
 
             } catch (error) {
                 loading.classList.add('hidden');
@@ -398,7 +412,15 @@
             }
         });
 
-        function displayResults(results) {
+        function displayResults(results, searchTimeMs) {
+            // Display search time
+            if (searchTimeMs !== undefined) {
+                searchTime.textContent = searchTimeMs < 1
+                    ? `${(searchTimeMs * 1000).toFixed(2)} µs`
+                    : `${searchTimeMs.toFixed(2)} ms`;
+                searchTime.classList.remove('hidden');
+            }
+
             if (results.length === 0) {
                 noResults.classList.remove('hidden');
                 resultsCount.textContent = '0 results';
