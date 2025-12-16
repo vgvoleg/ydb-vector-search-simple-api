@@ -10,6 +10,7 @@ import struct
 import time
 from typing import Optional
 
+import requests
 import ydb_dbapi
 import ydb
 from flask import Flask, request, jsonify, render_template
@@ -61,6 +62,9 @@ INDEX_TREE_SEARCH_TOP_SIZE = int(os.getenv("INDEX_TREE_SEARCH_TOP_SIZE", "1"))
 # Vector pass as bytes (как в оригинальной реализации)
 VECTOR_PASS_AS_BYTES = os.getenv("VECTOR_PASS_AS_BYTES", "true").lower() == "true"
 
+# Embedding API URL (для получения эмбеддингов по текстовым запросам)
+EMBEDDING_API_URL = os.getenv("EMBEDDING_API_URL", "")
+
 
 def get_connection():
     """Create YDB connection"""
@@ -100,10 +104,7 @@ def check_connection():
 
 def get_query_embedding(query: str) -> list[float]:
     """
-    Get embedding for a text query.
-
-    TODO: Implement this function to generate embeddings from text queries.
-    This could call an embedding service, model API, etc.
+    Get embedding for a text query by calling external embedding API.
 
     Args:
         query: Text query to convert to embedding
@@ -112,13 +113,45 @@ def get_query_embedding(query: str) -> list[float]:
         List of floats representing the embedding vector
 
     Raises:
-        NotImplementedError: This function is not yet implemented
+        ValueError: If EMBEDDING_API_URL is not configured
+        RuntimeError: If API call fails or returns invalid response
     """
-    logger.warning(f"Attempted to use unimplemented query embedding for: {query[:50]}...")
-    raise NotImplementedError(
-        "Query embedding generation is not yet implemented. "
-        "Please provide 'embedding' parameter directly instead of 'query'."
-    )
+    if not EMBEDDING_API_URL:
+        logger.warning(f"Attempted to use query embedding without configured API URL for: {query[:50]}...")
+        raise ValueError(
+            "EMBEDDING_API_URL is not configured. "
+            "Please set it in .env file or provide 'embedding' parameter directly."
+        )
+
+    logger.info(f"Getting embedding for query: {query[:100]}...")
+
+    try:
+        payload = {"TextSegments": {"query": query}}
+        response = requests.post(
+            EMBEDDING_API_URL,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=30
+        )
+        response.raise_for_status()
+
+        data = response.json()
+        embedding = data.get("Embedding")
+
+        if embedding is None:
+            logger.error(f"API response missing 'Embedding' key: {list(data.keys())}")
+            raise RuntimeError("API response does not contain 'Embedding' key")
+
+        if not isinstance(embedding, list):
+            logger.error(f"Invalid embedding type: {type(embedding)}")
+            raise RuntimeError(f"Expected embedding to be a list, got {type(embedding)}")
+
+        logger.info(f"Successfully retrieved embedding with dimension: {len(embedding)}")
+        return embedding
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Failed to get embedding from API: {str(e)}")
+        raise RuntimeError(f"Embedding API request failed: {str(e)}") from e
 
 
 def convert_vector_to_bytes(vector: list[float]) -> bytes:
@@ -312,9 +345,12 @@ def search():
 
             try:
                 embedding = get_query_embedding(query_text)
-            except NotImplementedError as e:
-                logger.warning("Query embedding not implemented")
+            except ValueError as e:
+                logger.warning(f"Query embedding configuration error: {e}")
                 return jsonify({"error": str(e)}), 501
+            except RuntimeError as e:
+                logger.error(f"Query embedding API error: {e}")
+                return jsonify({"error": str(e)}), 502
         else:
             embedding = data["embedding"]
             logger.info(f"Using provided embedding (dimension: {len(embedding) if isinstance(embedding, list) else 'invalid'})")
