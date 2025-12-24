@@ -281,18 +281,31 @@
                         id="query"
                         placeholder="Enter search query..."
                     >
-                    <div class="helper-text">Text query (not yet implemented)</div>
+                    <div class="helper-text">Text query will be converted to embedding via API</div>
                 </div>
 
-                <div class="form-group">
-                    <label for="k">Number of Results (k)</label>
-                    <input
-                        type="number"
-                        id="k"
-                        value="10"
-                        min="1"
-                        max="100"
-                    >
+                <div style="display: flex; gap: 20px;">
+                    <div class="form-group">
+                        <label for="k">Number of Results (k)</label>
+                        <input
+                            type="number"
+                            id="k"
+                            value="10"
+                            min="1"
+                            max="100"
+                        >
+                    </div>
+
+                    <div class="form-group">
+                        <label for="indexTreeSearchTopSize">Index Tree Search Top Size</label>
+                        <input
+                            type="number"
+                            id="indexTreeSearchTopSize"
+                            value="10"
+                            min="1"
+                            max="1000"
+                        >
+                    </div>
                 </div>
 
                 <button type="submit">Search</button>
@@ -369,8 +382,9 @@
 
             const inputMode = document.querySelector('input[name="inputMode"]:checked').value;
             const k = parseInt(document.getElementById('k').value);
+            const indexTreeSearchTopSize = parseInt(document.getElementById('indexTreeSearchTopSize').value);
 
-            let requestBody = { k };
+            let requestBody = { k, index_tree_search_top_size: indexTreeSearchTopSize };
 
             try {
                 if (inputMode === 'embedding') {

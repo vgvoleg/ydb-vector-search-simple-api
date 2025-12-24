@@ -57,7 +57,7 @@ SORT_ORDER = "DESC" if SEARCH_STRATEGY.endswith("Similarity") else "ASC"
 # Vector index settings (если используется)
 INDEX_ENABLED = os.getenv("INDEX_ENABLED", "false").lower() == "true"
 INDEX_NAME = os.getenv("INDEX_NAME", "ydb_vector_index")
-INDEX_TREE_SEARCH_TOP_SIZE = int(os.getenv("INDEX_TREE_SEARCH_TOP_SIZE", "1"))
+INDEX_TREE_SEARCH_TOP_SIZE_DEFAULT = int(os.getenv("INDEX_TREE_SEARCH_TOP_SIZE", "10"))
 
 # Vector pass as bytes (как в оригинальной реализации)
 VECTOR_PASS_AS_BYTES = os.getenv("VECTOR_PASS_AS_BYTES", "true").lower() == "true"
@@ -162,7 +162,7 @@ def convert_vector_to_bytes(vector: list[float]) -> bytes:
     return vector
 
 
-def prepare_search_query(k: int, filter_params: Optional[dict] = None) -> str:
+def prepare_search_query(k: int, filter_params: Optional[dict] = None, index_tree_search_top_size: int = INDEX_TREE_SEARCH_TOP_SIZE_DEFAULT) -> str:
     """Prepare SQL query for vector search"""
 
     # WHERE clause для фильтрации
@@ -187,7 +187,7 @@ def prepare_search_query(k: int, filter_params: Optional[dict] = None) -> str:
     pragma_statement = ""
     if INDEX_ENABLED:
         pragma_statement = f"""
-        PRAGMA ydb.KMeansTreeSearchTopSize="{INDEX_TREE_SEARCH_TOP_SIZE}";
+        PRAGMA ydb.KMeansTreeSearchTopSize="{index_tree_search_top_size}";
         """
 
     # VIEW индекса (если включен)
@@ -227,14 +227,14 @@ def prepare_search_query(k: int, filter_params: Optional[dict] = None) -> str:
     """
 
 
-def execute_search(embedding: list[float], k: int, filter_params: Optional[dict] = None):
+def execute_search(embedding: list[float], k: int, filter_params: Optional[dict] = None, index_tree_search_top_size: int = INDEX_TREE_SEARCH_TOP_SIZE_DEFAULT):
     """Execute vector similarity search"""
-    logger.info(f"Executing search with k={k}, embedding_dim={len(embedding)}, filter={filter_params}")
+    logger.info(f"Executing search with k={k}, embedding_dim={len(embedding)}, filter={filter_params}, index_tree_search_top_size={index_tree_search_top_size}")
     connection = get_connection()
 
     try:
-        query = prepare_search_query(k, filter_params)
-        logger.debug(f"Prepared query: {query[:200]}...")
+        query = prepare_search_query(k, filter_params, index_tree_search_top_size)
+        logger.info(f"Rendered query:\n{query}")
 
         # Prepare embedding parameter
         embedding_value = convert_vector_to_bytes(embedding)
@@ -288,6 +288,7 @@ def search():
         "embedding": [0.1, 0.2, 0.3, ...],  # вектор для поиска (используйте embedding ИЛИ query)
         "query": "search text",              # текстовый запрос (используйте embedding ИЛИ query)
         "k": 4,  # количество результатов (опционально, по умолчанию 4)
+        "index_tree_search_top_size": 10,   # размер поиска по индексу (опционально, по умолчанию 10)
         "filter": {  # опциональный фильтр по полям
             "title": "Some title",
             "vendor": "Some vendor",
@@ -360,6 +361,7 @@ def search():
                 return jsonify({"error": "embedding must be a list of floats"}), 400
 
         k = data.get("k", 4)
+        index_tree_search_top_size = data.get("index_tree_search_top_size", INDEX_TREE_SEARCH_TOP_SIZE_DEFAULT)
         filter_params = data.get("filter", None)
 
         # Validate k
@@ -367,8 +369,13 @@ def search():
             logger.error(f"Invalid k value: {k}")
             return jsonify({"error": "k must be a positive integer"}), 400
 
+        # Validate index_tree_search_top_size
+        if not isinstance(index_tree_search_top_size, int) or index_tree_search_top_size <= 0:
+            logger.error(f"Invalid index_tree_search_top_size value: {index_tree_search_top_size}")
+            return jsonify({"error": "index_tree_search_top_size must be a positive integer"}), 400
+
         # Execute search
-        results, search_time = execute_search(embedding, k, filter_params)
+        results, search_time = execute_search(embedding, k, filter_params, index_tree_search_top_size)
 
         search_time_ms = search_time * 1000
         logger.info(f"Search completed successfully, returning {len(results)} results in {search_time_ms:.2f}ms")
